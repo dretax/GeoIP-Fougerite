@@ -6,24 +6,27 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using Fougerite;
+using Fougerite.Events;
 
 namespace GeoIP
 {
     public class GeoIP : Fougerite.Module
     {
-        private IniParser CountryData;
-        private IniParser CountryInfo;
+        public IniParser CountryData;
+        public IniParser CountryInfo;
         public static IniParser CityInfo;
         public static IniParser CityData;
-        private IniParser Settings;
-        private Dictionary<string, string> datas;
-        private static Dictionary<int, IPLocationData> ipdatas;
-        public Dictionary<string, IPData> CachedIPs;
+        public IniParser Settings;
+        public Dictionary<string, string> datas;
+        public static Dictionary<int, IPLocationData> ipdatas;
+        public static Dictionary<string, IPData> CachedIPs;
         public static Dictionary<string, GCityData> CachedCitys;
-        private static GeoIP _instance;
+        public static GeoIP _instance;
+        public static bool GetIPDataOnConnectionBeforePluginsToCache = false;
         //private static bool UseURL;
-        private static string URL;
+        public static string URL;
 
         public override string Name
         {
@@ -42,7 +45,7 @@ namespace GeoIP
 
         public override Version Version
         {
-            get { return new Version("1.3"); }
+            get { return new Version("1.4"); }
         }
 
         public static GeoIP Instance
@@ -62,11 +65,13 @@ namespace GeoIP
                 File.Create(Path.Combine(ModuleFolder, "Settings.ini")).Dispose();
                 Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
                 //Settings.AddSetting("Settings", "ReadCitiesFromURL", "True");
+                Settings.AddSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache", "True");
                 Settings.AddSetting("Settings", "URL", "https://stats.pluton.team/PlutonGeoIP/?ip=");
                 Settings.Save();
             }
             Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
             URL = Settings.GetSetting("Settings", "URL");
+            GetIPDataOnConnectionBeforePluginsToCache = Settings.GetBoolSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache");
             /*UseURL = Settings.GetBoolSetting("Settings", "ReadCitiesFromURL");
             if (!UseURL && File.Exists(Path.Combine(ModuleFolder, "CityData.ini")))
             {
@@ -96,11 +101,44 @@ namespace GeoIP
                 int key = int.Parse(x);
                 ipdatas[key] = new IPLocationData(key, data);
             }
+            Hooks.OnPlayerApproval += OnPlayerApproval;
+            Hooks.OnCommand += OnCommand;
         }
 
         public override void DeInitialize()
         {
-            
+            Hooks.OnPlayerApproval -= OnPlayerApproval;
+            Hooks.OnCommand -= OnCommand;
+        }
+
+        public void OnCommand(Fougerite.Player player, string cmd, string[] args)
+        {
+            if (cmd == "geoip")
+            {
+                if (player.Admin)
+                {
+                    Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
+                    URL = Settings.GetSetting("Settings", "URL");
+                    GetIPDataOnConnectionBeforePluginsToCache = Settings.GetBoolSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache");
+                    player.Message("Reloaded!");
+                }
+            }
+        }
+
+        public void OnPlayerApproval(PlayerApprovalEvent playerApprovalEvent)
+        {
+            if (GetIPDataOnConnectionBeforePluginsToCache)
+            {
+                new Thread(() =>
+                {
+                    Thread.CurrentThread.IsBackground = true;
+                    string ip = playerApprovalEvent.ClientConnection.netUser.playerClient.netPlayer.externalIP;
+                    if (!CachedIPs.ContainsKey(ip))
+                    {
+                        GetDataOfIP(ip);
+                    }
+                }).Start();
+            }
         }
 
         public IPData GetDataOfIP(string ip)

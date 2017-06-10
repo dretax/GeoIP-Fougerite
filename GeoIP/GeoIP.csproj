@@ -34,6 +34,10 @@
     <Reference Include="Assembly-CSharp">
       <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\Assembly-CSharp.dll</HintPath>
     </Reference>
+    <Reference Include="Facepunch.ID, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\Facepunch.ID.dll</HintPath>
+    </Reference>
     <Reference Include="Fougerite">
       <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\Fougerite.dll</HintPath>
     </Reference>
@@ -43,6 +47,10 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="uLink, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\uLink.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\EquinoxUnturned\EquinoxUnturned\Ref\UnityEngine.dll</HintPath>
