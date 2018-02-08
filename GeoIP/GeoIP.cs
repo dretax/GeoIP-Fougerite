@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,6 +11,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using Fougerite;
 using Fougerite.Events;
+using UnityEngine;
 
 namespace GeoIP
 {
@@ -19,14 +22,16 @@ namespace GeoIP
         public static IniParser CityInfo;
         public static IniParser CityData;
         public IniParser Settings;
-        public Dictionary<string, string> datas;
+        public Dictionary<DataClass, string> datas;
         public static Dictionary<int, IPLocationData> ipdatas;
         public static Dictionary<string, IPData> CachedIPs;
         public static Dictionary<string, GCityData> CachedCitys;
         public static GeoIP _instance;
-        public static bool GetIPDataOnConnectionBeforePluginsToCache = false;
-        //private static bool UseURL;
+        //public static bool GetIPDataOnConnectionBeforePluginsToCache = false;
+        public static bool UseURL;
         public static string URL;
+
+        public static SQLiteConnection GeoIPSqlConnection;
 
         public override string Name
         {
@@ -45,7 +50,7 @@ namespace GeoIP
 
         public override Version Version
         {
-            get { return new Version("1.4"); }
+            get { return new Version("2.0"); }
         }
 
         public static GeoIP Instance
@@ -56,7 +61,7 @@ namespace GeoIP
         public override void Initialize()
         {
             _instance = this;
-            datas = new Dictionary<string, string>();
+            datas = new Dictionary<DataClass, string>();
             ipdatas = new Dictionary<int, IPLocationData>();
             CachedIPs = new Dictionary<string, IPData>();
             CachedCitys = new Dictionary<string, GCityData>();
@@ -64,14 +69,14 @@ namespace GeoIP
             {
                 File.Create(Path.Combine(ModuleFolder, "Settings.ini")).Dispose();
                 Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
-                //Settings.AddSetting("Settings", "ReadCitiesFromURL", "True");
-                Settings.AddSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache", "True");
+                Settings.AddSetting("Settings", "UseURL", "False");
+                //Settings.AddSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache", "True");
                 Settings.AddSetting("Settings", "URL", "https://stats.pluton.team/PlutonGeoIP/?ip=");
                 Settings.Save();
             }
             Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
             URL = Settings.GetSetting("Settings", "URL");
-            GetIPDataOnConnectionBeforePluginsToCache = Settings.GetBoolSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache");
+            UseURL = Settings.GetBoolSetting("Settings", "UseURL");
             /*UseURL = Settings.GetBoolSetting("Settings", "ReadCitiesFromURL");
             if (!UseURL && File.Exists(Path.Combine(ModuleFolder, "CityData.ini")))
             {
@@ -89,10 +94,12 @@ namespace GeoIP
             foreach (var x in enumm)
             {
                 var data = CountryData.GetSetting("IPs", x);
-                if (!datas.ContainsKey(x))
+                string[] spl = x.Split('-');
+                datas.Add(new DataClass(spl[0], spl[1], x), data);
+                /*if (!datas.ContainsKey(x))
                 {
                     datas.Add(x, data);
-                }
+                }*/
             }
             var enumm2 = CountryInfo.EnumSection("Info");
             foreach (var x in enumm2)
@@ -101,14 +108,35 @@ namespace GeoIP
                 int key = int.Parse(x);
                 ipdatas[key] = new IPLocationData(key, data);
             }
+            if (!UseURL)
+            {
+                GeoIPSqlConnection =
+                    new SQLiteConnection("Data Source = " + ModuleFolder + "\\GeoIP.sqlite" +
+                                         ";Version = 3;New = False;Compress = True;Foreign Keys=True;");
+            }
+
             Hooks.OnPlayerApproval += OnPlayerApproval;
             Hooks.OnCommand += OnCommand;
+            Hooks.OnServerShutdown += OnServerShutdown;
         }
 
         public override void DeInitialize()
         {
             Hooks.OnPlayerApproval -= OnPlayerApproval;
             Hooks.OnCommand -= OnCommand;
+            Hooks.OnServerShutdown -= OnServerShutdown;
+            if (GeoIPSqlConnection != null && GeoIPSqlConnection.State == ConnectionState.Open)
+            {
+                GeoIPSqlConnection.Close();
+            }
+        }
+
+        public void OnServerShutdown()
+        {
+            if (GeoIPSqlConnection != null && GeoIPSqlConnection.State == ConnectionState.Open)
+            {
+                GeoIPSqlConnection.Close();
+            }
         }
 
         public void OnCommand(Fougerite.Player player, string cmd, string[] args)
@@ -119,7 +147,17 @@ namespace GeoIP
                 {
                     Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
                     URL = Settings.GetSetting("Settings", "URL");
-                    GetIPDataOnConnectionBeforePluginsToCache = Settings.GetBoolSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache");
+                    UseURL = Settings.GetBoolSetting("Settings", "UseURL");
+                    if (GeoIPSqlConnection != null && GeoIPSqlConnection.State == ConnectionState.Open)
+                    {
+                        GeoIPSqlConnection.Close();
+                    }
+                    if (UseURL)
+                    {
+                        GeoIPSqlConnection =
+                    new SQLiteConnection("Data Source = " + ModuleFolder + "\\GeoIP.sqlite" +
+                                         ";Version = 3;New = False;Compress = True;Foreign Keys=True;");
+                    }
                     player.Message("Reloaded!");
                 }
             }
@@ -127,7 +165,7 @@ namespace GeoIP
 
         public void OnPlayerApproval(PlayerApprovalEvent playerApprovalEvent)
         {
-            if (GetIPDataOnConnectionBeforePluginsToCache)
+            if (UseURL)
             {
                 new Thread(() =>
                 {
@@ -150,16 +188,15 @@ namespace GeoIP
             try
             {
                 IPAddress newip = IPAddress.Parse(ip);
-                string keyweneed =
+                DataClass keyweneedo =
                     (from x in datas.Keys
-                        let y = x.Split('-')
-                        where new IPAddressRange(y[0], y[1]).IsInRange(newip)
+                        where new IPAddressRange(x.IP1, x.IP2).IsInRange(newip)
                         select x).FirstOrDefault();
-                if (keyweneed != null)
+                if (keyweneedo != null)
                 {
                     if (!CachedIPs.ContainsKey(ip))
                     {
-                        var data = new IPData(ip, datas[keyweneed], keyweneed);
+                        var data = new IPData(ip, datas[keyweneedo], keyweneedo.Key);
                         CachedIPs[ip] = data;
                         return data;
                     }
@@ -231,27 +268,61 @@ namespace GeoIP
             public GCityData(string ip)
             {
                 string data = "";
-                //if (UseURL)
-                //{
-                    ServicePointManager.ServerCertificateValidationCallback = new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
+                if (UseURL)
+                {
+                    ServicePointManager.ServerCertificateValidationCallback =
+                        new System.Net.Security.RemoteCertificateValidationCallback(AcceptAllCertifications);
                     using (System.Net.WebClient client = new System.Net.WebClient())
                     {
                         data = client.DownloadString(URL + ip);
                     }
-                //}
-                string[] split = data.Split(',');
-                _geoid = split[0];
-                _cgeoid = split[1];
-                _is_anonymous_proxy = split[3] != "0";
-                _is_satellite_provider = split[4] != "0";
-                _latitude = split[6];
-                _longitude = split[7];
-                string data2 = CityInfo.GetSetting("Info", _geoid);
-                string[] split2 = data2.Split(',');
-                _country = split2[4];
-                _countrys = split2[3];
-                _continent = split2[2];
-                _continents = split2[1];
+                }
+                else
+                {
+                    using (SQLiteCommand fmd = GeoIPSqlConnection.CreateCommand())
+                    {
+                        
+                        UInt32 ipxd = ip.Split('.').Select(UInt32.Parse).Aggregate((a, b) => a * 256 + b);
+                        fmd.CommandText = "SELECT `result` FROM `CityData` WHERE '" + ipxd + "' >= `range_start` AND " + ipxd + " <= `range_end`";
+                        //fmd.CommandText = "SELECT COUNT(*) AS `num`, `result`, '" + ipxd + "' AS OurNumber FROM `CityData` WHERE CAST(OurNumber as int) BETWEEN `range_start` AND `range_end`";
+                        //fmd.CommandText = "SELECT COUNT(*) AS `num`, range_start, range_end WHERE result=719819,719819,,0,0,,47.4925,19.0514";
+                        fmd.CommandType = CommandType.Text;
+                        GeoIPSqlConnection.Open();
+                        SQLiteDataReader r = fmd.ExecuteReader();
+                        while (r.Read())
+                        {
+                            string result = r["result"] as string;
+                            if (result == null)
+                            {
+                                result = "";
+                            }
+                            if (!string.IsNullOrEmpty(result))
+                            {
+                                data = result;
+                                break;
+                            }
+                        }
+                        r.Close();
+                        GeoIPSqlConnection.Close();
+                    }
+                }
+                if (!string.IsNullOrEmpty(data))
+                {
+                    string[] split = data.Split(',');
+                    _geoid = split[0];
+                    _cgeoid = split[1];
+                    _is_anonymous_proxy = split[3] != "0";
+                    _is_satellite_provider = split[4] != "0";
+                    _latitude = split[6];
+                    _longitude = split[7];
+
+                    string data2 = CityInfo.GetSetting("Info", _geoid);
+                    string[] split2 = data2.Split(',');
+                    _country = split2[4];
+                    _countrys = split2[3];
+                    _continent = split2[2];
+                    _continents = split2[1];
+                }
             }
 
             public bool AcceptAllCertifications(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslpolicyerrors)
@@ -394,6 +465,20 @@ namespace GeoIP
             public string StoredIP
             {
                 get { return _IP; }
+            }
+        }
+
+        public class DataClass
+        {
+            public string IP1;
+            public string IP2;
+            public string Key;
+
+            public DataClass(string ip1, string ip2, string key)
+            {
+                IP1 = ip1;
+                IP2 = ip2;
+                Key = key;
             }
         }
 

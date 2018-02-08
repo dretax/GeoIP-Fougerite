@@ -38,11 +38,15 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\Facepunch.ID.dll</HintPath>
     </Reference>
-    <Reference Include="Fougerite">
+    <Reference Include="Fougerite, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
       <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\Fougerite.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data.SQLite">
+      <HintPath>E:\Users\DreTaX\Documents\Visual Studio 2013\Projects\FougeriteProject\bin\System.Data.SQLite.dll</HintPath>
+    </Reference>
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
