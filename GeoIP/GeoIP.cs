@@ -27,7 +27,6 @@ namespace GeoIP
         public static Dictionary<string, IPData> CachedIPs;
         public static Dictionary<string, GCityData> CachedCitys;
         public static GeoIP _instance;
-        //public static bool GetIPDataOnConnectionBeforePluginsToCache = false;
         public static bool UseURL;
         public static string URL;
 
@@ -50,7 +49,7 @@ namespace GeoIP
 
         public override Version Version
         {
-            get { return new Version("2.0"); }
+            get { return new Version("2.1"); }
         }
 
         public static GeoIP Instance
@@ -70,22 +69,12 @@ namespace GeoIP
                 File.Create(Path.Combine(ModuleFolder, "Settings.ini")).Dispose();
                 Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
                 Settings.AddSetting("Settings", "UseURL", "False");
-                //Settings.AddSetting("Settings", "GetIPDataOnConnectionBeforePluginsToCache", "True");
                 Settings.AddSetting("Settings", "URL", "https://stats.pluton.team/PlutonGeoIP/?ip=");
                 Settings.Save();
             }
             Settings = new IniParser(Path.Combine(ModuleFolder, "Settings.ini"));
             URL = Settings.GetSetting("Settings", "URL");
             UseURL = Settings.GetBoolSetting("Settings", "UseURL");
-            /*UseURL = Settings.GetBoolSetting("Settings", "ReadCitiesFromURL");
-            if (!UseURL && File.Exists(Path.Combine(ModuleFolder, "CityData.ini")))
-            {
-                
-            }
-            else
-            {
-                UseURL = true;
-            }*/
             CountryData = new IniParser(Path.Combine(ModuleFolder, "CountryData.ini"));
             CountryInfo = new IniParser(Path.Combine(ModuleFolder, "CountryInfo.ini"));
             CityInfo = new IniParser(Path.Combine(ModuleFolder, "CityInfo.ini"));
@@ -96,10 +85,6 @@ namespace GeoIP
                 var data = CountryData.GetSetting("IPs", x);
                 string[] spl = x.Split('-');
                 datas.Add(new DataClass(spl[0], spl[1], x), data);
-                /*if (!datas.ContainsKey(x))
-                {
-                    datas.Add(x, data);
-                }*/
             }
             var enumm2 = CountryInfo.EnumSection("Info");
             foreach (var x in enumm2)
@@ -118,6 +103,7 @@ namespace GeoIP
             Hooks.OnPlayerApproval += OnPlayerApproval;
             Hooks.OnCommand += OnCommand;
             Hooks.OnServerShutdown += OnServerShutdown;
+            if (GeoIPSqlConnection != null) GeoIPSqlConnection.Open();
         }
 
         public override void DeInitialize()
@@ -152,11 +138,12 @@ namespace GeoIP
                     {
                         GeoIPSqlConnection.Close();
                     }
-                    if (UseURL)
+                    if (!UseURL)
                     {
                         GeoIPSqlConnection =
                     new SQLiteConnection("Data Source = " + ModuleFolder + "\\GeoIP.sqlite" +
                                          ";Version = 3;New = False;Compress = True;Foreign Keys=True;");
+                        GeoIPSqlConnection.Open();
                     }
                     player.Message("Reloaded!");
                 }
@@ -221,7 +208,7 @@ namespace GeoIP
 
         public class IPLocationData
         {
-            private string _CountryCode, _ContinentShort, _Continent, _CountryShort, _Country; 
+            private readonly string _CountryCode, _ContinentShort, _Continent, _CountryShort, _Country; 
 
             public IPLocationData(int countrycode, string data)
             {
@@ -281,21 +268,13 @@ namespace GeoIP
                 {
                     using (SQLiteCommand fmd = GeoIPSqlConnection.CreateCommand())
                     {
-                        
                         UInt32 ipxd = ip.Split('.').Select(UInt32.Parse).Aggregate((a, b) => a * 256 + b);
-                        fmd.CommandText = "SELECT `result` FROM `CityData` WHERE '" + ipxd + "' >= `range_start` AND " + ipxd + " <= `range_end`";
-                        //fmd.CommandText = "SELECT COUNT(*) AS `num`, `result`, '" + ipxd + "' AS OurNumber FROM `CityData` WHERE CAST(OurNumber as int) BETWEEN `range_start` AND `range_end`";
-                        //fmd.CommandText = "SELECT COUNT(*) AS `num`, range_start, range_end WHERE result=719819,719819,,0,0,,47.4925,19.0514";
+                        fmd.CommandText = "SELECT `result` FROM `CityData` WHERE '" + ipxd + "' >= `range_start` AND " + ipxd + " <= `range_end` LIMIT 1";
                         fmd.CommandType = CommandType.Text;
-                        GeoIPSqlConnection.Open();
                         SQLiteDataReader r = fmd.ExecuteReader();
                         while (r.Read())
                         {
                             string result = r["result"] as string;
-                            if (result == null)
-                            {
-                                result = "";
-                            }
                             if (!string.IsNullOrEmpty(result))
                             {
                                 data = result;
@@ -303,7 +282,6 @@ namespace GeoIP
                             }
                         }
                         r.Close();
-                        GeoIPSqlConnection.Close();
                     }
                 }
                 if (!string.IsNullOrEmpty(data))
@@ -383,11 +361,11 @@ namespace GeoIP
 
         public class IPData
         {
-            private string _CountryCode, _CountryCode2, _IP;
-            private bool _IsAnonymousProxy, _IsSatelliteProvider;
-            private IPLocationData _IPLocationData;
-            private string _keyweneed;
-            private GCityData _citydata;
+            private readonly string _CountryCode, _CountryCode2, _IP;
+            private readonly bool _IsAnonymousProxy, _IsSatelliteProvider;
+            private readonly IPLocationData _IPLocationData;
+            private readonly string _keyweneed;
+            private readonly GCityData _citydata;
 
             public IPData(string ip, string data, string keyweneed)
             {
@@ -470,9 +448,9 @@ namespace GeoIP
 
         public class DataClass
         {
-            public string IP1;
-            public string IP2;
-            public string Key;
+            public readonly string IP1;
+            public readonly string IP2;
+            public readonly string Key;
 
             public DataClass(string ip1, string ip2, string key)
             {
