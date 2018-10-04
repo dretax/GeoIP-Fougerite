@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data;
 using System.Data.SQLite;
 using System.IO;
@@ -49,7 +50,7 @@ namespace GeoIP
 
         public override Version Version
         {
-            get { return new Version("2.1"); }
+            get { return new Version("2.2"); }
         }
 
         public static GeoIP Instance
@@ -100,7 +101,6 @@ namespace GeoIP
                                          ";Version = 3;New = False;Compress = True;Foreign Keys=True;");
             }
 
-            Hooks.OnPlayerApproval += OnPlayerApproval;
             Hooks.OnCommand += OnCommand;
             Hooks.OnServerShutdown += OnServerShutdown;
             if (GeoIPSqlConnection != null) GeoIPSqlConnection.Open();
@@ -108,7 +108,6 @@ namespace GeoIP
 
         public override void DeInitialize()
         {
-            Hooks.OnPlayerApproval -= OnPlayerApproval;
             Hooks.OnCommand -= OnCommand;
             Hooks.OnServerShutdown -= OnServerShutdown;
             if (GeoIPSqlConnection != null && GeoIPSqlConnection.State == ConnectionState.Open)
@@ -150,28 +149,28 @@ namespace GeoIP
             }
         }
 
-        public void OnPlayerApproval(PlayerApprovalEvent playerApprovalEvent)
+        public void GetDataOfIP(string ip, Action<IPData> Callback)
         {
-            if (UseURL)
+            if (ip == "127.0.0.1" || ip == "localhost")
             {
-                new Thread(() =>
-                {
-                    Thread.CurrentThread.IsBackground = true;
-                    string ip = playerApprovalEvent.ClientConnection.netUser.playerClient.netPlayer.externalIP;
-                    if (!CachedIPs.ContainsKey(ip))
-                    {
-                        GetDataOfIP(ip);
-                    }
-                }).Start();
+                Callback(null);
+                return;
             }
+            Dictionary<string, object> Data = new Dictionary<string, object>();
+            Data["ip"] = ip;
+            Data["Callback"] = Callback;
+            
+            BackgroundWorker BGW = new BackgroundWorker();
+            BGW.DoWork += new DoWorkEventHandler(GetDataOfIPHandle);
+            BGW.RunWorkerAsync(Data);
         }
 
-        public IPData GetDataOfIP(string ip)
+        private void GetDataOfIPHandle(object sender, DoWorkEventArgs doWorkEventArgs)
         {
-            if (ip == "127.0.0.1")
-            {
-                return null;
-            }
+            Dictionary<string, object> Data = (Dictionary<string, object>) doWorkEventArgs.Argument;
+            string ip = (string) Data["ip"];
+            Action<IPData> Callback = (Action<IPData>) Data["Callback"];
+            
             try
             {
                 IPAddress newip = IPAddress.Parse(ip);
@@ -185,9 +184,13 @@ namespace GeoIP
                     {
                         var data = new IPData(ip, datas[keyweneedo], keyweneedo.Key);
                         CachedIPs[ip] = data;
-                        return data;
                     }
-                    return CachedIPs[ip];
+
+                    Callback(CachedIPs[ip]);
+                }
+                else
+                {
+                    Callback(null);
                 }
             }
             catch (Exception ex)
@@ -203,7 +206,6 @@ namespace GeoIP
                 Logger.LogError("[GeoIP] Error Happened. Check the logs");
                 Logger.LogDebug("[GeoIP] " + ex + " IpAddress: " + ip);
             }
-            return null;
         }
 
         public class IPLocationData
