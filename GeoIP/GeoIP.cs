@@ -50,7 +50,7 @@ namespace GeoIP
 
         public override Version Version
         {
-            get { return new Version("2.2"); }
+            get { return new Version("2.2.1"); }
         }
 
         public static GeoIP Instance
@@ -149,17 +149,19 @@ namespace GeoIP
             }
         }
 
-        public void GetDataOfIP(string ip, Action<IPData> Callback)
+        public void GetDataOfIP(string ip, Fougerite.Player player, Action<IPData, Fougerite.Player> Callback)
         {
             if (ip == "127.0.0.1" || ip == "localhost")
             {
-                Callback(null);
+                Callback(null, player);
                 return;
             }
             Dictionary<string, object> Data = new Dictionary<string, object>();
             Data["ip"] = ip;
             Data["Callback"] = Callback;
-            
+            Data["Player"] = player;
+
+
             BackgroundWorker BGW = new BackgroundWorker();
             BGW.DoWork += new DoWorkEventHandler(GetDataOfIPHandle);
             BGW.RunWorkerAsync(Data);
@@ -169,7 +171,8 @@ namespace GeoIP
         {
             Dictionary<string, object> Data = (Dictionary<string, object>) doWorkEventArgs.Argument;
             string ip = (string) Data["ip"];
-            Action<IPData> Callback = (Action<IPData>) Data["Callback"];
+            Fougerite.Player player = (Fougerite.Player) Data["Player"];
+            Action<IPData, Fougerite.Player> Callback = (Action<IPData, Fougerite.Player>) Data["Callback"];
             
             try
             {
@@ -186,11 +189,11 @@ namespace GeoIP
                         CachedIPs[ip] = data;
                     }
 
-                    Callback(CachedIPs[ip]);
+                    Callback(CachedIPs[ip], player);
                 }
                 else
                 {
-                    Callback(null);
+                    Callback(null, player);
                 }
             }
             catch (Exception ex)
